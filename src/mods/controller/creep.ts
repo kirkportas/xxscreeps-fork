@@ -133,7 +133,7 @@ export function checkClaimController(creep: Creep, target: StructureController) 
 		() => checkTarget(target, StructureController),
 		() => checkRange(creep, target, 1),
 		() => {
-			if (userGame && userGame.gcl.level <= userGame.gcl['#roomCount']) {
+			if (userGame?.gcl && userGame.gcl.level <= userGame.gcl['#roomCount']) {
 				return C.ERR_GCL_NOT_ENOUGH;
 			}
 			const user = target['#user'];

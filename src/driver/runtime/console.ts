@@ -9,6 +9,11 @@ export function setupConsole(write: (fd: number, payload: string) => void) {
 			write(1, format(args));
 		},
 
+		// logUnsafe was added to screeps in Jan 2026
+		logUnsafe(...args: any[]) {
+			write(1, format(args));
+		},
+
 		warn(...args: any[]) {
 			if (args.length === 1 && typeof args[0] === 'string') {
 				args[0] = `⚠️${args[0]}`;

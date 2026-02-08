@@ -120,6 +120,10 @@ try {
 				let count = processedRooms.size;
 				// Also finalize rooms which were sent inter-room intents
 				for await (const roomName of consumeSet(shard.scratch, finalizeExtraRoomsSetKey(time))) {
+					// Skip rooms that don't exist in the world (prevents crashes from out-of-bounds intents)
+					if (!world.terrain.has(roomName)) {
+						continue;
+					}
 					const room = await shard.loadRoom(roomName, time - 1);
 					const context = new RoomProcessor(shard, world, room, time);
 					await context.process(true);
