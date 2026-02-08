@@ -56,6 +56,10 @@ export function checkObserveRoom(observer: StructureObserver, target: string) {
 	if (!observer.isActive()) {
 		return C.ERR_RCL_NOT_ENOUGH;
 	}
+	// Check if target room exists in the world
+	if (!Game.map.getRoomStatus(target)) {
+		return C.ERR_INVALID_ARGS;
+	}
 	const range = Game.map.getRoomLinearDistance(observer.room.name, target);
 	if (Object.is(range, NaN)) {
 		return C.ERR_INVALID_ARGS;

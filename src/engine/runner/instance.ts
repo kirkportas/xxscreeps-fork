@@ -167,8 +167,9 @@ export class PlayerInstance {
 				// Allow driver connectors to access room blobs by waiting on this promise
 				await Promise.all([
 					(async() => {
-						// Wait for room blobs
-						payload.roomBlobs = await Promise.all(Fn.map(visibleRooms,
+						// Wait for room blobs (filter out non-existent rooms)
+						const validRooms = visibleRooms.filter(roomName => this.world.terrain.has(roomName));
+						payload.roomBlobs = await Promise.all(Fn.map(validRooms,
 							roomName => this.shard.loadRoomBlob(roomName, time - 1)));
 						// Load unseen users
 						const userIds = Fn.concat(Fn.map(payload.roomBlobs, blob => {

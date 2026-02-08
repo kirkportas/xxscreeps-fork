@@ -300,6 +300,12 @@ registerObjectTickProcessor(Creep, (creep, context) => {
 				return new RoomPosition(creep.pos.x, 0, generateRoomName(rx, ry + 1));
 			}
 		}();
+		// Check if the destination room exists (prevents movement to out-of-bounds rooms)
+		if (!Game.map.getRoomStatus(next.roomName)) {
+			// Room doesn't exist, creep cannot cross
+			context.wakeAt(creep['#ageTime']);
+			return;
+		}
 		creep.room['#removeObject'](creep);
 		// Update `creep.pos` for the import command but set it back so that `#flushObjects` can safely
 		// update the internal indices.
