@@ -10,7 +10,8 @@ import { flushUsers } from 'xxscreeps/game/room/room.js';
 import { begetRoomProcessQueue, finalizeExtraRoomsSetKey, processRoomsSetKey, updateUserRoomRelationships, userToIntentRoomsSetKey, userToVisibleRoomsSetKey } from 'xxscreeps/engine/processor/model.js';
 import { consumeSet, consumeSortedSet } from 'xxscreeps/engine/db/async.js';
 import { RoomProcessor } from 'xxscreeps/engine/processor/room.js';
-import { Game, GameState, initializeGameEnvironment, runForUser, runOneShot, runWithState } from 'xxscreeps/game/index.js';
+import { Game, GameState, initializeGameEnvironment, runForPlayer, runForUser, runOneShot, runWithState } from 'xxscreeps/game/index.js';
+import type { TickPayload } from 'xxscreeps/engine/runner/index.js';
 import { getOrSet } from 'xxscreeps/utility/utility.js';
 import { instantiateTestShard } from 'xxscreeps/test/import.js';
 import { initializeIntentConstraints } from 'xxscreeps/engine/processor/index.js';
@@ -113,13 +114,18 @@ export function simulate(rooms: Record<string, (room: Room) => void>) {
 
 				async player(userId, task) {
 					// Fetch game state for player
-					const [ intentRooms, visibleRooms ] = await Promise.all([
+					const [ intentRooms, visibleRooms, controlledRoomCount, gcl ] = await Promise.all([
 						shard.scratch.smembers(userToIntentRoomsSetKey(userId)),
 						shard.scratch.smembers(userToVisibleRoomsSetKey(userId)),
+						shard.scratch.scard(`user/${userId}/controlledRooms`),
+						async function() {
+							return Number(await shard.db.data.hget(`user/${userId}`, 'gcl')) || 1;
+						}(),
 					]);
 					const rooms = await Promise.all(Fn.map(visibleRooms, roomName => shard.loadRoom(roomName)));
 					const state = new GameState(world, shard.time, rooms);
-					const [ intents ] = runForUser(userId, state, task);
+					const payload = { controlledRoomCount, gcl } as TickPayload;
+					const [ intents ] = runForPlayer(userId, state, payload, task);
 
 					// Save intents
 					for (const roomName of intentRooms) {
