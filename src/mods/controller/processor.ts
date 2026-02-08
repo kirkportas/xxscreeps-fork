@@ -113,6 +113,10 @@ const intents = [
 					claim(context, controller, creep['#user']);
 					saveAction(creep, 'reserveController', controller.pos);
 					context.didUpdate();
+				} else {
+					// Reset the controller owner if claim failed
+					controller['#user'] = null;
+					context.didUpdate();
 				}
 			});
 		}
