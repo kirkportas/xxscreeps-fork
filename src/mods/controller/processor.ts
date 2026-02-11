@@ -183,6 +183,12 @@ const intents = [
 			controller['#progress'] += energy;
 			controller.upgradePowerThisTick += energy;
 
+			// Track energy spent on control (upgrading controller)
+			const userId = creep['#user'];
+			if (userId && userId.length > 2 && energy > 0) {
+				context.task(context.shard.db.data.hincrBy(User.infoKey(userId), 'energyControl', energy));
+			}
+
 			if (controller.level < 8) {
 				const nextLevel = C.CONTROLLER_LEVELS[controller.level]!;
 				if (controller['#progress'] >= nextLevel) {

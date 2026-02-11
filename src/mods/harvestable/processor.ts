@@ -2,6 +2,7 @@ import type { Harvestable } from './game.js';
 import type { Implementation } from 'xxscreeps/utility/types.js';
 import type { RoomObject } from 'xxscreeps/game/object.js';
 import C from 'xxscreeps/game/constants/index.js';
+import * as User from 'xxscreeps/engine/db/user/index.js';
 import { Game } from 'xxscreeps/game/index.js';
 import { saveAction } from 'xxscreeps/game/object.js';
 import { Creep } from 'xxscreeps/mods/creep/creep.js';
@@ -43,6 +44,11 @@ const intent = registerIntentProcessor(Creep, 'harvest', {
 			targetId: target.id,
 		});
 		saveAction(creep, 'harvest', target.pos);
+		// Track energy harvested stat
+		const userId = creep['#user'];
+		if (userId && userId.length > 2 && amount > 0) {
+			context.task(context.shard.db.data.hincrBy(User.infoKey(userId), 'energyHarvested', amount));
+		}
 		context.didUpdate();
 	}
 });

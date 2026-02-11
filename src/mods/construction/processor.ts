@@ -2,6 +2,7 @@ import type { ConstructibleStructureType } from './construction-site.js';
 import type { DestructibleStructure } from 'xxscreeps/mods/structure/structure.js';
 import C from 'xxscreeps/game/constants/index.js';
 import * as Resource from 'xxscreeps/mods/resource/processor/resource.js';
+import * as User from 'xxscreeps/engine/db/user/index.js';
 import { Game, me } from 'xxscreeps/game/index.js';
 import { Creep, calculatePower } from 'xxscreeps/mods/creep/creep.js';
 import { RoomPosition } from 'xxscreeps/game/position.js';
@@ -52,6 +53,11 @@ const intents = [
 				creep.store['#subtract'](C.RESOURCE_ENERGY, energy);
 				target.progress += energy;
 				saveAction(creep, 'build', target.pos);
+				// Track energy spent on construction
+				const userId = creep['#user'];
+				if (userId && userId.length > 2) {
+					context.task(context.shard.db.data.hincrBy(User.infoKey(userId), 'energyConstruction', energy));
+				}
 				context.didUpdate();
 			}
 		}
@@ -90,9 +96,15 @@ const intents = [
 				target.hitsMax - target.hits,
 				creep.store.energy / C.REPAIR_COST);
 			if (effect > 0) {
-				creep.store['#subtract'](C.RESOURCE_ENERGY, effect * C.REPAIR_COST);
+				const energyUsed = effect * C.REPAIR_COST;
+				creep.store['#subtract'](C.RESOURCE_ENERGY, energyUsed);
 				target.hits += effect;
 				saveAction(creep, 'repair', target.pos);
+				// Track energy spent on repairs (included in construction stats)
+				const userId = creep['#user'];
+				if (userId && userId.length > 2) {
+					context.task(context.shard.db.data.hincrBy(User.infoKey(userId), 'energyConstruction', energyUsed));
+				}
 				context.didUpdate();
 			}
 		}

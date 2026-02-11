@@ -20,6 +20,7 @@ import { writeRoomObject } from 'xxscreeps/engine/db/room.js';
 import { typedArrayToString } from 'xxscreeps/utility/string.js';
 import { hooks, registerIntentProcessor, registerObjectPreTickProcessor, registerObjectTickProcessor } from 'xxscreeps/engine/processor/index.js';
 import { clamp, filterInPlace } from 'xxscreeps/utility/utility.js';
+import * as User from 'xxscreeps/engine/db/user/index.js';
 import { Tombstone, buryCreep } from './tombstone.js';
 
 const pulledToPuller = new Map<Creep, Creep>();
@@ -261,6 +262,11 @@ registerObjectTickProcessor(Creep, (creep, context) => {
 		(Game.time >= creep['#ageTime'] && creep['#ageTime'] !== 0) ||
 		creep.hits <= 0
 	) {
+		// Track creeps lost stat
+		const userId = creep['#user'];
+		if (userId && userId.length > 2) {
+			context.task(context.shard.db.data.hincrBy(User.infoKey(userId), 'creepsLost', creep.body.length));
+		}
 		buryCreep(creep);
 		context.didUpdate();
 		return;

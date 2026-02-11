@@ -3,6 +3,7 @@ import type { Direction } from 'xxscreeps/game/position.js';
 import C from 'xxscreeps/game/constants/index.js';
 import Fn from 'xxscreeps/utility/functional.js';
 import * as ControllerProc from 'xxscreeps/mods/controller/processor.js';
+import * as User from 'xxscreeps/engine/db/user/index.js';
 import { RoomPosition, getPositionInDirection } from 'xxscreeps/game/position.js';
 import { Creep, create as createCreep } from 'xxscreeps/mods/creep/creep.js';
 import { Game, me } from 'xxscreeps/game/index.js';
@@ -178,6 +179,15 @@ const intents = [
 		spawning['#spawnId'] = spawn.id;
 		spawning['#spawningCreepId'] = creep.id;
 		spawning['#spawnTime'] = Game.time + needTime - 1;
+
+		// Track creep spawn stats
+		const userId = spawn['#user'];
+		if (userId && userId.length > 2) {
+			context.task(Promise.all([
+				context.shard.db.data.hincrBy(User.infoKey(userId), 'energyCreeps', cost),
+				context.shard.db.data.hincrBy(User.infoKey(userId), 'creepsProduced', body.length),
+			]));
+		}
 		context.didUpdate();
 	}),
 ];
