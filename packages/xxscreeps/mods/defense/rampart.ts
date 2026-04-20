@@ -1,4 +1,5 @@
 import type { RoomPosition } from 'xxscreeps/game/position.js';
+import type { RoomObject as RoomObjectType } from 'xxscreeps/game/object.js';
 import * as C from 'xxscreeps/game/constants/index.js';
 import { Game, intents, me } from 'xxscreeps/game/index.js';
 import * as RoomObject from 'xxscreeps/game/object.js';
@@ -34,6 +35,37 @@ export class StructureRampart extends withOverlay(OwnedStructure, shape) {
 			return C.OK;
 		} else {
 			return C.ERR_NOT_OWNER;
+		}
+	}
+
+	// Track whether #captureDamage already applied damage (to avoid double-damage in rangedMassAttack)
+	declare ['#damageApplied']: boolean | undefined;
+
+	// Rampart layer is higher than default (0.5) so it captures damage before creeps/structures
+	override get ['#layer']() { return 1; }
+
+	// Absorb up to remaining hits and apply damage to self. captureDamage() does NOT call
+	// #applyDamage on intermediate objects, so we must apply damage here. rangedMassAttack calls
+	// both #captureDamage and #applyDamage, so we set a flag to avoid double-damage.
+	override ['#captureDamage'](power: number, _type: number, _source: RoomObjectType | null) {
+		const absorbed = Math.min(power, this.hits);
+		this.hits -= absorbed;
+		this['#damageApplied'] = true;
+		if (this.hits <= 0) {
+			this['#destroy']();
+		}
+		return power - absorbed;
+	}
+
+	// Skip if captureDamage already applied damage (rangedMassAttack case). When the rampart is
+	// the direct target, captureDamage skips it and #applyDamage handles the hit normally.
+	override ['#applyDamage'](power: number, _type: number, _source?: RoomObjectType) {
+		if (this['#damageApplied']) {
+			this['#damageApplied'] = undefined;
+			return;
+		}
+		if ((this.hits -= power) <= 0) {
+			this['#destroy']();
 		}
 	}
 

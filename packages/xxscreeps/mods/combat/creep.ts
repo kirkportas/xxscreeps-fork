@@ -181,19 +181,20 @@ export function captureDamage(target: RoomObject, initialPower: number, type: nu
 	let layer: number | undefined;
 	for (const object of objects) {
 		const objectLayer = object['#layer'];
-		if (object === target) {
-			return power;
-		} else if (layer !== objectLayer) {
+		if (layer !== objectLayer) {
 			layer = objectLayer;
 			power = iterationPower;
 			if (power <= 0) {
 				return 0;
 			}
 		}
-		// The idea here is that multiple objects on the same layer can capture damage simultaneously,
-		// and whichever one captures more will be used. This doesn't apply to any existing game
-		// objects, but idk maybe it could be interesting.
-		iterationPower = Math.min(iterationPower, target['#captureDamage'](power, C.EVENT_ATTACK_TYPE_MELEE, source));
+		if (object === target) {
+			return power;
+		}
+		// Multiple objects on the same layer can capture damage simultaneously; whichever captures
+		// more wins. `object` (not `target`) is the object intercepting damage, and `type` is the
+		// actual attack type (not hardcoded melee).
+		iterationPower = Math.min(iterationPower, object['#captureDamage'](power, type, source));
 	}
 	throw new Error('Object was never found');
 }

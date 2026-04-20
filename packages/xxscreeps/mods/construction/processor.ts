@@ -10,6 +10,7 @@ import { Creep, calculatePower } from 'xxscreeps/mods/creep/creep.js';
 import * as Resource from 'xxscreeps/mods/resource/processor/resource.js';
 import { ConstructionSite, checkRemove, create } from './construction-site.js';
 import { checkBuild, checkDismantle, checkRepair } from './creep.js';
+import { captureDamage } from 'xxscreeps/mods/combat/creep.js';
 import { checkCreateConstructionSite } from './room.js';
 import { structureFactories } from './symbols.js';
 
@@ -64,15 +65,19 @@ const intents = [
 	}, (creep, context, id: string) => {
 		const target = Game.getObjectById<DestructibleStructure>(id)!;
 		if (checkDismantle(creep, target) === C.OK) {
-			const effect = Math.min(calculatePower(creep, C.WORK, C.DISMANTLE_POWER, 'dismantle'), target.hits);
-			if (effect > 0) {
-				const energy = Math.floor(effect * C.DISMANTLE_COST);
+			const rawEffect = Math.min(calculatePower(creep, C.WORK, C.DISMANTLE_POWER, 'dismantle'), target.hits);
+			if (rawEffect > 0) {
+				const energy = Math.floor(rawEffect * C.DISMANTLE_COST);
 				const overflow = Math.max(energy - creep.store.getFreeCapacity(C.RESOURCE_ENERGY), 0);
 				creep.store['#add'](C.RESOURCE_ENERGY, energy - overflow);
 				if (overflow > 0) {
 					Resource.drop(creep.pos, 'energy', overflow);
 				}
-				target.hits -= effect;
+				// Route through captureDamage so ramparts protect against dismantling
+				const effect = captureDamage(target, rawEffect, C.EVENT_ATTACK_TYPE_DISMANTLE, creep);
+				if (effect > 0) {
+					target.hits -= effect;
+				}
 				// TODO: dismantle event + destroy hook
 				// saveAction(creep, 'dismantle', target.pos.x, target.pos.y);
 				context.didUpdate();
