@@ -95,7 +95,11 @@ const intents = [
 						return;
 					}
 					const dealerBuys = !order['#buy'];
-					const range = Game.map.getRoomLinearDistance(myRoomName, order.roomName!);
+					// `Game.map` is a runtime-only surface — inside a processor the Game binding
+					// carries `time` but no map, so this must go through the processor's own world
+					// (the same path room.ts uses for getRoomStatus). `continuous: true` matches
+					// Market.calcTransactionCost, which is the fee the real API charges for a deal.
+					const range = context.state.world.map.getRoomLinearDistance(myRoomName, order.roomName!, true);
 					if (!(range < Infinity)) {
 						return;
 					}
