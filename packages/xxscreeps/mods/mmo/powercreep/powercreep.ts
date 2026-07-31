@@ -1,6 +1,7 @@
 import type { GameConstructor } from 'xxscreeps/game/index.js';
 import type { Direction } from 'xxscreeps/game/position.js';
 import type { Resource, ResourceType } from 'xxscreeps/mods/classic/resource/resource.js';
+import type { RoomPath } from 'xxscreeps/game/room/path.js';
 import type { WithStore } from 'xxscreeps/mods/classic/resource/store.js';
 import type { TypeOf } from 'xxscreeps/schema/index.js';
 import { makeReaderAndWriter } from 'xxscreeps/engine/schema/index.js';
@@ -11,6 +12,7 @@ import { RoomObject, cooldownTime, optionalExpiryTime, saveAction } from 'xxscre
 import { registerObstacleChecker } from 'xxscreeps/game/pathfinder/index.js';
 import { RoomPosition, fetchPositionArgument } from 'xxscreeps/game/position.js';
 import { appendEventLog } from 'xxscreeps/game/room/event-log.js';
+import { Room } from 'xxscreeps/game/room/index.js';
 import { StructureController } from 'xxscreeps/mods/classic/controller/controller.js';
 import { checkCarrier, checkDrop, checkPickup, checkTransfer, checkWithdraw } from 'xxscreeps/mods/classic/creep/creep.js';
 import { OpenStore, calculateChecked, checkHasResourceAmount } from 'xxscreeps/mods/classic/resource/store.js';
@@ -259,6 +261,50 @@ export class PowerCreep extends withOverlay(RoomObject, powerCreepShape) {
 			() => checkCarrier(this),
 			() => Number.isInteger(direction) && direction >= 1 && direction <= 8 ? C.OK : C.ERR_INVALID_ARGS,
 			() => intents.save(this, 'move', direction));
+	}
+
+	/**
+	 * Move the creep using the specified predefined path. Accepts both the array form (from
+	 * `findPathTo`/`PathFinder.search`) and the serialized string form.
+	 *
+	 * Mirrors `Creep.moveByPath` exactly rather than sharing it: `PowerCreep` extends `RoomObject`,
+	 * not `Creep`, so it inherits nothing, and keeping the copy here confines this branch's diff to
+	 * the powercreep module (smaller rebase surface against upstream pins). The algorithm needs
+	 * only `pos` and `move`, so there is no creep-specific behaviour to diverge on.
+	 *
+	 * The real MMO API has this method; its absence crashed player flee code that paths with
+	 * `PathFinder.search` and then hands the result to `moveByPath`.
+	 * @param path A path value as returned from `findPathTo`, `RoomPosition.findPathTo`, or
+	 * `PathFinder.search`. Both array form and serialized string form are accepted.
+	 * @returns One of the following codes: `OK`, `ERR_NOT_OWNER`, `ERR_BUSY`, `ERR_NOT_FOUND`,
+	 * `ERR_INVALID_ARGS`
+	 * @public
+	 * @see https://docs.screeps.com/api/#PowerCreep.moveByPath
+	 */
+	moveByPath(path: RoomPath | RoomPosition[] | string): C.ErrorCode {
+		// Parse serialized path
+		if (typeof path === 'string') {
+			return this.moveByPath(Room.deserializePath(path));
+		} else if (!Array.isArray(path)) {
+			return C.ERR_INVALID_ARGS;
+		}
+
+		// Find current position. A PathFinder result excludes the origin, so the `isNearTo(path[0])`
+		// branch is what makes those paths work: index -1 advances to 0, i.e. the first step.
+		type AnyPosition = RoomPosition | RoomPath[number];
+		const convert = (entry: AnyPosition) =>
+			entry instanceof RoomPosition
+				? entry : new RoomPosition(entry.x, entry.y, this.pos.roomName);
+		let ii = path.findIndex((pos: AnyPosition) => this.pos.isEqualTo(convert(pos)));
+		if (ii === -1 && !this.pos.isNearTo(convert(path[0]!))) {
+			return C.ERR_NOT_FOUND;
+		}
+
+		// Get next position
+		if (++ii >= path.length) {
+			return C.ERR_NOT_FOUND;
+		}
+		return this.move(this.pos.getDirectionTo(convert(path[ii]!)));
 	}
 
 	/**
