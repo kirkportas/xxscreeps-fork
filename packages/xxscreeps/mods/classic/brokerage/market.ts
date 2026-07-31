@@ -61,4 +61,19 @@ export class Market {
 		const distance = this.#map.getRoomLinearDistance(roomName1, roomName2, true);
 		return Math.ceil(amount * (1 - Math.exp(-distance / 30)));
 	}
+
+	/**
+	 * Get daily price history of the specified resource on the market for the last 14 days.
+	 *
+	 * Harness hook: real order-book/price aggregation is not implemented in this engine; a test
+	 * harness may inject MMO-shaped history rows ({resourceType, date, transactions, volume,
+	 * avgPrice, stddevPrice}) into the sandbox global `__xxMarketHistory`. With nothing injected
+	 * this returns `[]`, matching "no market data yet" — never NaN/undefined.
+	 * @public
+	 * @see https://docs.screeps.com/api/#Game.market.getHistory
+	 */
+	getHistory(resourceType?: string) {
+		const rows = (globalThis as Record<string, any>).__xxMarketHistory as any[] | undefined ?? [];
+		return resourceType === undefined ? rows : rows.filter(row => row.resourceType === resourceType);
+	}
 }

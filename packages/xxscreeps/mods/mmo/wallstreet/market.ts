@@ -118,13 +118,6 @@ declare module 'xxscreeps/mods/classic/brokerage/market.js' {
 		getAllOrders: (predicate?: Iteratee<Order> | null) => Order[];
 
 		/**
-		 * Get daily price history of the specified resource on the market for the last 14 days.
-		 * @public
-		 * @see https://docs.screeps.com/api/#Game.market.getHistory
-		 */
-		getHistory: () => undefined;
-
-		/**
 		 * Retrieve info for specific market order.
 		 * @public
 		 * @see https://docs.screeps.com/api/#Game.market.getOrderById
@@ -179,7 +172,6 @@ extend(Market, {
 	changeOrderPrice() {},
 	deal() {},
 	extendOrder() {},
-	getHistory() {},
 
 });
 
