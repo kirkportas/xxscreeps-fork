@@ -1,7 +1,7 @@
 import { registerStruct } from 'xxscreeps/engine/schema/index.js';
 import { roomObjectShape } from 'xxscreeps/game/schema.js';
 import { ownedStructureShape } from 'xxscreeps/mods/classic/structure/schema.js';
-import { declare, struct, variant } from 'xxscreeps/schema/index.js';
+import { declare, struct, variant, vector } from 'xxscreeps/schema/index.js';
 
 /** @internal */
 export const sourceShape = declare('Source', struct(roomObjectShape, {
@@ -21,6 +21,15 @@ export const sourceShape = declare('Source', struct(roomObjectShape, {
 	 */
 	energyCapacity: 'int32',
 	'#nextRegenerationTime': 'int32',
+
+	// Applied power effects (harness patch: only PWR_REGEN_SOURCE writes here today). Sources are
+	// instantiated from shard.json/create() at boot, so extending the shape does not invalidate any
+	// pre-serialized blob.
+	'#effects': vector(struct({
+		power: 'int32',
+		level: 'int32',
+		endTime: 'int32',
+	})),
 }));
 
 /** @internal */

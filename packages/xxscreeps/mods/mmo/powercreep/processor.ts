@@ -7,6 +7,7 @@ import { Game } from 'xxscreeps/game/index.js';
 import { createRoomObject, saveAction } from 'xxscreeps/game/object.js';
 import { appendEventLog } from 'xxscreeps/game/room/event-log.js';
 import { isBorder } from 'xxscreeps/game/terrain.js';
+import { Source } from 'xxscreeps/mods/classic/source/source.js';
 import { StructureController } from 'xxscreeps/mods/classic/controller/controller.js';
 import { checkCarrier } from 'xxscreeps/mods/classic/creep/creep.js';
 import { borderExitPosition, commitMove, flushActionLog, kRetainActionsTime, processDrop, processPickup, processSay, processTransfer, processWithdraw, teleportCreep } from 'xxscreeps/mods/classic/creep/processor.js';
@@ -133,6 +134,23 @@ const intents = [
 				creep.store['#add'](C.RESOURCE_OPS, amount - overflow);
 				if (overflow > 0) {
 					dropResource(creep.pos, C.RESOURCE_OPS, overflow);
+				}
+				break;
+			}
+			case C.PWR_REGEN_SOURCE: {
+				// Harness patch: register the effect on the source (real API shape — level/duration
+				// from POWER_INFO). The periodic +energy pulse is NOT implemented yet; player code
+				// observing `source.effects` sees the application, which is what matters first.
+				const source = target as Source;
+				const effects = (source['#effects'] ??= []);
+				const duration = Array.isArray(info.duration) ? info.duration[entry.level - 1]! : info.duration!;
+				const endTime = Game.time + duration;
+				const existing = effects.find(effect => effect.power === C.PWR_REGEN_SOURCE);
+				if (existing) {
+					existing.level = entry.level;
+					existing.endTime = endTime;
+				} else {
+					effects.push({ power: C.PWR_REGEN_SOURCE, level: entry.level, endTime });
 				}
 				break;
 			}
