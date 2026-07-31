@@ -1,4 +1,5 @@
 import { hooks } from 'xxscreeps/engine/runner/index.js';
+import * as User from 'xxscreeps/engine/db/user/index.js';
 import { create, getPowerCreepChannel, loadPowerCreepsBlob, upgrade } from './model.js';
 
 declare module 'xxscreeps/engine/runner/index.js' {
@@ -7,6 +8,8 @@ declare module 'xxscreeps/engine/runner/index.js' {
 	}
 	interface TickPayload {
 		powerCreepsBlob?: Readonly<Uint8Array> | null;
+		/** Account power (raw, for Game.gpl) — re-read each tick; harness setAccount writes it. */
+		gplPower?: number;
 	}
 }
 
@@ -28,6 +31,12 @@ hooks.register('runnerConnector', async player => {
 				dirty = false;
 				payload.powerCreepsBlob = await loadPowerCreepsBlob(db, userId);
 			}
+			// Account power feeds Game.gpl (game.ts). Re-read each tick: it changes via paths that
+			// don't fire the roster channel (backend upgrades, harness setAccount), and the read is
+			// one hGet.
+			try {
+				payload.gplPower = Number(await db.data.hGet(User.infoKey(userId), 'power')) || 0;
+			} catch { /* store mid-teardown */ }
 		},
 
 		async save(payload) {

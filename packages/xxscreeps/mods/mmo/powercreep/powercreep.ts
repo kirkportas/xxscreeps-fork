@@ -595,7 +595,7 @@ interface PowerEntry { power: number; level: number }
 export const powerInfoTable: Record<number, PowerInfo> = C.POWER_INFO;
 
 /** Global power level earned from accumulated power experience. */
-function gplLevel(power: number) {
+export function gplLevel(power: number) {
 	return Math.floor((power / C.POWER_LEVEL_MULTIPLY) ** (1 / C.POWER_LEVEL_POW));
 }
 

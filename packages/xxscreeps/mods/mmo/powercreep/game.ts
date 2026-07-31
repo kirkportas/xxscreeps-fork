@@ -3,7 +3,7 @@ import { hooks, registerGlobal } from 'xxscreeps/game/index.js';
 import { registerFindHandlers, registerLook } from 'xxscreeps/game/room/index.js';
 import { compose } from 'xxscreeps/schema/index.js';
 import * as C from 'xxscreeps:mods/constants';
-import { PowerCreep, accountIntents, read } from './powercreep.js';
+import { PowerCreep, accountIntents, gplLevel, read } from './powercreep.js';
 import { powerCreepShape } from './schema.js';
 
 declare module 'xxscreeps/engine/runner/index.js' {
@@ -53,12 +53,31 @@ declare module 'xxscreeps/game/game.js' {
 		powerCreeps: Record<string, PowerCreep>;
 	}
 }
-hooks.register('gameInitializer', Game => {
+hooks.register('gameInitializer', (Game, payload) => {
 	Game.powerCreeps = Object.create(null) as Record<string, PowerCreep>;
 	for (const creep of roster) {
 		Game.powerCreeps[creep.name] = creep;
 	}
+	// Game.gpl from the driver-forwarded account power (real-API shape; level starts at 0, matching
+	// the engine's own capacity math in checkCreatePowerCreep).
+	const power = payload?.gplPower ?? 0;
+	const level = gplLevel(power);
+	Game.gpl = {
+		level,
+		progress: power - Math.floor(level ** C.POWER_LEVEL_POW * C.POWER_LEVEL_MULTIPLY),
+		progressTotal: Math.floor((level + 1) ** C.POWER_LEVEL_POW * C.POWER_LEVEL_MULTIPLY),
+	};
 });
+
+declare module 'xxscreeps/game/game.js' {
+	interface Game {
+		/**
+		 * Your Global Power Level.
+		 * @see https://docs.screeps.com/api/#Game.gpl
+		 */
+		gpl: { level: number; progress: number; progressTotal: number };
+	}
+}
 
 export type PowerCreepRoomSchema = typeof powerCreepSchema;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
