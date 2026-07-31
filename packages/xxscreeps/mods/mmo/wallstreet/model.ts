@@ -4,7 +4,7 @@ import { Channel } from 'xxscreeps/engine/db/channel.js';
 import * as User from 'xxscreeps/engine/db/user/index.js';
 import { UpdateSchemaBlob, loadUpgradedWithWriteBack } from 'xxscreeps/engine/schema/keyval.js';
 import * as C from 'xxscreeps:mods/constants';
-import { Order, orderAmountOffsetOf, orderSchemaVersion, readOrder, upgradeOrder, writeOrder } from './order.js';
+import { Order, orderAmountOffsetOf, orderRemainingAmountOffsetOf, orderSchemaVersion, readOrder, upgradeOrder, writeOrder } from './order.js';
 
 // -- User credits --
 
@@ -117,6 +117,26 @@ export async function updateOrderAmount(shard: Shard, orderId: string, amount: n
 			[ orderBlobKey(orderId) ],
 			[ orderSchemaVersion, orderAmountOffsetOf, 'int32', amount, 'set' ]),
 		amount === 0
+			? shard.data.sRem(activeOrdersKey, [ orderId ])
+			: shard.data.sAdd(activeOrdersKey, [ orderId ]),
+		marketChannel(shard).publish({ type: 'updated', id: orderId, amount }),
+	]);
+}
+
+// Apply a cleared deal to an order: both the advertised volume (`amount`) and the lifetime
+// remainder (`remainingAmount`) shrink by the dealt units. An order whose remainder hits zero is
+// removed from the active set the same way `updateOrderAmount(0)` does.
+export async function applyOrderDeal(shard: Shard, orderId: string, amount: number, remainingAmount: number) {
+	return Promise.all([
+		shard.data.eval(
+			UpdateSchemaBlob,
+			[ orderBlobKey(orderId) ],
+			[ orderSchemaVersion, orderAmountOffsetOf, 'int32', amount, 'set' ]),
+		shard.data.eval(
+			UpdateSchemaBlob,
+			[ orderBlobKey(orderId) ],
+			[ orderSchemaVersion, orderRemainingAmountOffsetOf, 'int32', remainingAmount, 'set' ]),
+		remainingAmount === 0
 			? shard.data.sRem(activeOrdersKey, [ orderId ])
 			: shard.data.sAdd(activeOrdersKey, [ orderId ]),
 		marketChannel(shard).publish({ type: 'updated', id: orderId, amount }),

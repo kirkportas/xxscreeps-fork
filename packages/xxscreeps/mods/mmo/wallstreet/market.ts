@@ -99,7 +99,7 @@ declare module 'xxscreeps/mods/classic/brokerage/market.js' {
 		 * @public
 		 * @see https://docs.screeps.com/api/#Game.market.deal
 		 */
-		deal: () => undefined;
+		deal: (orderId: string, amount: number, yourRoomName?: string) => number;
 
 		/**
 		 * Add more capacity to an existing order. It will affect `remainingAmount` and `totalAmount`
@@ -170,7 +170,24 @@ extend(Market, {
 
 	cancelOrder() {},
 	changeOrderPrice() {},
-	deal() {},
+
+	/**
+	 * Routed through the terminal in `yourRoomName` so it uses the same intent slot machinery as
+	 * `createOrder` — the market object itself has no intent slot. `yourRoomName` is required here
+	 * (the real API allows omitting it only for account-bound INTERSHARD_RESOURCES, which this
+	 * engine does not trade).
+	 */
+	deal(orderId: string, amount: number, yourRoomName?: string) {
+		if (yourRoomName === undefined) {
+			return C.ERR_INVALID_ARGS;
+		}
+		const terminal = Game.rooms[yourRoomName]?.terminal;
+		if (!terminal?.my) {
+			return C.ERR_NOT_OWNER;
+		}
+		return terminal['#deal'](orderId, amount);
+	},
+
 	extendOrder() {},
 
 });

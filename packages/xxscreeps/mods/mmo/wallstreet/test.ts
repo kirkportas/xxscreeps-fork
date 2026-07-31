@@ -39,6 +39,47 @@ describe('mods/mmo/wallstreet', () => {
 	// fee = 25,000
 	const sellOptions = { ...options, totalAmount: 1000, type: C.ORDER_SELL } as const;
 
+	test('deal buys from a sell order: goods in, credits out, energy fee paid, book decremented', async () => sim(async ({ player, shard, tick }) => {
+		// Counterparty '101' lists 1000 U at 0.5cr in W2N1 (range 1 from the dealer's W1N1).
+		const order = instantiate(Order, {
+			id: Id.generateId(),
+			amount: 1000,
+			created: 1,
+			createdTimestamp: Date.now(),
+			remainingAmount: 1000,
+			resourceType: C.RESOURCE_UTRIUM,
+			roomName: 'W2N1',
+			totalAmount: 1000,
+		});
+		order['#buy'] = false;
+		order['#user'] = '101';
+		order['#price'] = 500; // millicredits => 0.5 credits/unit
+		await insertOrder(shard, order);
+		await tick();
+
+		const creditsBefore = await loadUserCredits(shard, '100');
+		await player('100', Game => {
+			assert.strictEqual(Game.market.deal(order.id, 100, 'W1N1'), C.OK);
+		});
+		await tick();
+
+		// Goods landed, the 0.5cr/unit price left the dealer, and the counterparty was paid.
+		await player('100', Game => {
+			const terminal = Game.rooms.W1N1!.terminal!;
+			assert.strictEqual(terminal.store[C.RESOURCE_UTRIUM], 100);
+			// energy 10000 minus calcTransactionCost(100, range 1) — the same formula `send` pays.
+			const fee = Game.market.calcTransactionCost(100, 'W1N1', 'W2N1');
+			assert.strictEqual(terminal.store[C.RESOURCE_ENERGY], 10000 - fee);
+			assert.ok(terminal.cooldown > 0, 'deal puts the terminal on cooldown');
+		});
+		assert.strictEqual(await loadUserCredits(shard, '100'), creditsBefore - 100 * 500);
+		assert.strictEqual(await loadUserCredits(shard, '101'), 100 * 500);
+
+		// The order book shrank by exactly the dealt units.
+		const dealt = await loadAndReadMarketOrder(shard, order.id);
+		assert.strictEqual(dealt?.remainingAmount, 900);
+	}));
+
 	test('read getters split the active book from your own orders', async () => sim(async ({ player, shard, tick }) => {
 		await incrementUserCredits(shard, '101', 50_000);
 		await tick();

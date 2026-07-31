@@ -48,7 +48,9 @@ const {
 } = makeReaderAndWriter(format);
 
 const orderAmountOffsetOf = orderOffsetOf('MarketOrder', 'amount');
-export { orderAmountOffsetOf, readOrder, orderSchemaVersion, upgradeOrder, writeOrder };
+// `deal` decrements the lifetime remainder as well as the advertised volume.
+const orderRemainingAmountOffsetOf = orderOffsetOf('MarketOrder', 'remainingAmount');
+export { orderAmountOffsetOf, orderRemainingAmountOffsetOf, readOrder, orderSchemaVersion, upgradeOrder, writeOrder };
 
 // Internal `Game.market` helper
 export class Orders {
