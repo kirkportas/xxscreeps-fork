@@ -49,7 +49,44 @@ export interface PowerType {
  * @public
  * @see https://docs.screeps.com/api/#PowerCreep
  */
+/**
+ * Account-op intents queued by the runtime statics below (harness patch). The real MMO handles
+ * create/upgrade via HTTP backend routes; sandboxed player code cannot reach them, so these ride
+ * the TickResult to a runner-side hook (driver.ts) that calls the same Model functions the backend
+ * routes call — mirroring how flag intents travel. Drained by game.ts's runtimeConnector send.
+ */
+export const accountIntents: ({ type: 'create'; name: string; className: string } |
+	{ type: 'upgrade'; id: string; powers: Record<string, number> })[] = [];
+
 export class PowerCreep extends withOverlay(RoomObject, powerCreepShape) {
+
+	/**
+	 * A static method to create new Power Creep instance in your account. It will be added in an
+	 * unspawned state. Processed runner-side after this tick (validation included) — returns OK
+	 * optimistically; a rejected create surfaces as the roster entry not appearing.
+	 * @public
+	 * @see https://docs.screeps.com/api/#PowerCreep.create
+	 */
+	static create(name: string, className: string) {
+		if (typeof name !== 'string' || !name.length) return C.ERR_INVALID_ARGS;
+		if (className !== 'operator') return C.ERR_INVALID_ARGS;
+		accountIntents.push({ type: 'create', name, className });
+		return C.OK;
+	}
+
+	/**
+	 * Upgrade the creep, adding a new power ability to it or increasing level of the existing power.
+	 * Same optimistic-queue semantics as `create`.
+	 * @public
+	 * @see https://docs.screeps.com/api/#PowerCreep.upgrade
+	 */
+	upgrade(power: number) {
+		const powers: Record<string, number> = {};
+		for (const entry of this['#powers']) powers[entry.power] = entry.level;
+		powers[power] = (powers[power] ?? 0) + 1;
+		accountIntents.push({ type: 'upgrade', id: this.id, powers });
+		return C.OK;
+	}
 	/** @internal — raw incoming damage this tick; settled to `hits` in the tick processor. */
 	declare tickRawDamage: number | undefined;
 

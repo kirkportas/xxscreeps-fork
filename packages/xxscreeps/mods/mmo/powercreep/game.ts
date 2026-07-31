@@ -3,8 +3,14 @@ import { hooks, registerGlobal } from 'xxscreeps/game/index.js';
 import { registerFindHandlers, registerLook } from 'xxscreeps/game/room/index.js';
 import { compose } from 'xxscreeps/schema/index.js';
 import * as C from 'xxscreeps:mods/constants';
-import { PowerCreep, read } from './powercreep.js';
+import { PowerCreep, accountIntents, read } from './powercreep.js';
 import { powerCreepShape } from './schema.js';
+
+declare module 'xxscreeps/engine/runner/index.js' {
+	interface TickResult {
+		powerCreepAccountIntents?: typeof accountIntents;
+	}
+}
 
 let roster: PowerCreep[] = [];
 
@@ -21,6 +27,14 @@ hooks.register('runtimeConnector', {
 			roster = [];
 		} else if (payload.powerCreepsBlob) {
 			roster = read(payload.powerCreepsBlob);
+		}
+	},
+
+	send(payload) {
+		// Account-op intents (PowerCreep.create / upgrade — harness patch, see powercreep.ts):
+		// ride the TickResult to driver.ts, which calls the backend routes' Model functions.
+		if (accountIntents.length) {
+			payload.powerCreepAccountIntents = accountIntents.splice(0);
 		}
 	},
 });
