@@ -9,7 +9,7 @@ import { chainIntentChecks, checkRange, checkSafeMode, checkTarget } from 'xxscr
 import { Game, intents, me, userGame, userInfo } from 'xxscreeps/game/index.js';
 import { RoomObject, cooldownTime, optionalExpiryTime, saveAction } from 'xxscreeps/game/object.js';
 import { registerObstacleChecker } from 'xxscreeps/game/pathfinder/index.js';
-import { RoomPosition } from 'xxscreeps/game/position.js';
+import { RoomPosition, fetchPositionArgument } from 'xxscreeps/game/position.js';
 import { appendEventLog } from 'xxscreeps/game/room/event-log.js';
 import { StructureController } from 'xxscreeps/mods/classic/controller/controller.js';
 import { checkCarrier, checkDrop, checkPickup, checkTransfer, checkWithdraw } from 'xxscreeps/mods/classic/creep/creep.js';
@@ -222,6 +222,42 @@ export class PowerCreep extends withOverlay(RoomObject, powerCreepShape) {
 			() => checkCarrier(this),
 			() => Number.isInteger(direction) && direction >= 1 && direction <= 8 ? C.OK : C.ERR_INVALID_ARGS,
 			() => intents.save(this, 'move', direction));
+	}
+
+	/**
+	 * Find an optimal path to the target and move the creep one step toward it. Simplified from
+	 * `Creep.moveTo` — power creeps have no fatigue or body parts, so the fatigue check and the
+	 * memory path cache are omitted; each call re-paths and issues one `move`. Sufficient for
+	 * player code whose movement layer falls back to `moveTo` (the real MMO API has this method;
+	 * its absence here crashed such code outright).
+	 * @returns One of the following codes: `OK`, `ERR_NOT_OWNER`, `ERR_BUSY`, `ERR_INVALID_TARGET`,
+	 * `ERR_NO_PATH`
+	 * @public
+	 * @see https://docs.screeps.com/api/#PowerCreep.moveTo
+	 */
+	moveTo(x: number, y: number, opts?: object): number;
+	moveTo(target: RoomObject | RoomPosition, opts?: object): number;
+	moveTo(...args: unknown[]) {
+		type Rest = [ opts?: object | undefined ];
+		type Signature = [ xx: number, yy: number, ...Rest ] | [ target: RoomObject | RoomPosition, ...Rest ];
+		const { pos, rest: [ options ] } = fetchPositionArgument(this.pos.roomName, args as Signature);
+		if (pos === undefined) {
+			return C.ERR_INVALID_TARGET;
+		} else if (pos.isEqualTo(this.pos)) {
+			return C.OK;
+		}
+		const result = chainIntentChecks(
+			() => checkSpawned(this),
+			() => checkCarrier(this));
+		if (result !== C.OK) {
+			return result;
+		}
+		const path = this.pos.findPathTo(pos, { ...options as object, serialize: false });
+		const [ next ] = path;
+		if (next === undefined) {
+			return this.pos.isNearTo(pos) ? C.OK : C.ERR_NO_PATH;
+		}
+		return this.move(next.direction);
 	}
 
 	/**
