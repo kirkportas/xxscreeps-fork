@@ -5,6 +5,11 @@ import { Transactions } from 'xxscreeps/mods/classic/brokerage/transaction.js';
 // Retain previous `Transactions` to reuse blobs from previous payload
 let previousTransactions: Transactions | undefined;
 
+// Harness-seeded market history (see driver.ts): parsed once per change, retained across ticks the
+// same way transactions are. `null`/absent key clears it.
+let historyRows: any[] = [];
+let historyRaw: string | null | undefined;
+
 /**
  * A global object representing the in-game market. You can use this object to track resource
  * transactions to/from your terminals, and your buy/sell orders.
@@ -22,6 +27,10 @@ export class Market {
 		previousTransactions =
 			this.#transactions =
 				new Transactions(data?.transactions, previousTransactions);
+		if (data && 'marketHistory' in data && data.marketHistory !== historyRaw) {
+			historyRaw = data.marketHistory;
+			try { historyRows = data.marketHistory ? JSON.parse(data.marketHistory) : []; } catch { historyRows = []; }
+		}
 		this['#initialize'](data);
 	}
 
@@ -66,14 +75,13 @@ export class Market {
 	 * Get daily price history of the specified resource on the market for the last 14 days.
 	 *
 	 * Harness hook: real order-book/price aggregation is not implemented in this engine; a test
-	 * harness may inject MMO-shaped history rows ({resourceType, date, transactions, volume,
-	 * avgPrice, stddevPrice}) into the sandbox global `__xxMarketHistory`. With nothing injected
-	 * this returns `[]`, matching "no market data yet" — never NaN/undefined.
+	 * harness may seed MMO-shaped history rows ({resourceType, date, transactions, volume,
+	 * avgPrice, stddevPrice}) under the store key the driver forwards each tick (see driver.ts).
+	 * With nothing seeded this returns `[]`, matching "no market data yet" — never NaN/undefined.
 	 * @public
 	 * @see https://docs.screeps.com/api/#Game.market.getHistory
 	 */
 	getHistory(resourceType?: string) {
-		const rows = (globalThis as Record<string, any>).__xxMarketHistory as any[] | undefined ?? [];
-		return resourceType === undefined ? rows : rows.filter(row => row.resourceType === resourceType);
+		return resourceType === undefined ? historyRows : historyRows.filter(row => row.resourceType === resourceType);
 	}
 }

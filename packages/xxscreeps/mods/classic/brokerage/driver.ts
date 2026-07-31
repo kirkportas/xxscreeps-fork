@@ -87,6 +87,14 @@ hooks.register('runnerConnector', async player => {
 		},
 
 		async refresh(payload) {
+			// Market-history bridge (harness patch): a test harness seeds MMO-shaped history rows
+			// under this store key; the Market constructor caches them for Game.market.getHistory.
+			// Read each tick (tiny at harness scale) so seeding, updates and CLEARS are all always
+			// current — `null` (key absent) and `'[]'` are both representable and distinct from
+			// "no update this tick" (field omitted only when the read fails).
+			try {
+				payload.marketHistory = await player.shard.db.data.get('xxMarketHistory') ?? null;
+			} catch { /* store mid-teardown */ }
 			if (brokerage.check()) {
 				const { incomingIds, outgoingIds } = brokerage;
 				const currentIds = new Set(Fn.concat<string>([ incomingIds, outgoingIds ]));
@@ -113,5 +121,7 @@ hooks.register('runnerConnector', async player => {
 declare module 'xxscreeps/engine/runner/index.js' {
 	interface TickPayload {
 		transactions?: TransactionPayload;
+		/** Harness-seeded market history rows (JSON), or null when none are seeded. */
+		marketHistory?: string | null;
 	}
 }
