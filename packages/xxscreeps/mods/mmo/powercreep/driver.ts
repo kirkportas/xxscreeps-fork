@@ -41,16 +41,25 @@ hooks.register('runnerConnector', async player => {
 
 		async save(payload) {
 			// Account-op intents from the runtime (PowerCreep.create / upgrade — harness patch):
-			// same Model calls the HTTP backend routes make; each publishes the roster channel,
-			// which flips `dirty` above and refreshes Game.powerCreeps next tick. Result codes are
-			// dropped (the runtime already returned OK optimistically) — a rejection surfaces as
-			// the roster entry not appearing/upgrading.
-			for (const intent of payload.powerCreepAccountIntents ?? []) {
+			// same Model calls the HTTP backend routes make. Result codes are dropped (the runtime
+			// already returned OK optimistically) — a rejection surfaces as the roster entry not
+			// appearing/upgrading.
+			const intents = payload.powerCreepAccountIntents ?? [];
+			for (const intent of intents) {
 				if (intent.type === 'create') {
 					await create(db, userId, intent.name, intent.className);
 				} else if (intent.type === 'upgrade') {
 					await upgrade(db, userId, intent.id, intent.powers);
 				}
+			}
+			// Each Model call publishes the roster channel, but that delivery is asynchronous and
+			// lands AFTER the next tick's `refresh()` — the runtime would serve a stale
+			// `Game.powerCreeps` for one extra tick, so the script sees no effect and re-issues every
+			// create/upgrade. Our own writes are already committed by here, so flip `dirty` directly,
+			// the same way `refresh()` re-reads `gplPower` rather than waiting on a channel. The
+			// pubsub echo of these publishes still arrives later and costs one redundant reload.
+			if (intents.length !== 0) {
+				dirty = true;
 			}
 		},
 	} ];
