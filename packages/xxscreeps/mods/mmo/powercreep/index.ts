@@ -6,6 +6,7 @@ export const manifest: Manifest = {
 		'xxscreeps/mods/classic/combat',
 		'xxscreeps/mods/classic/controller',
 		'xxscreeps/mods/classic/creep',
+		'xxscreeps/mods/classic/spawn',
 		'xxscreeps/mods/modern/factory',
 		'xxscreeps/mods/modern/powerbank',
 		'xxscreeps/mods/modern/powerspawn',

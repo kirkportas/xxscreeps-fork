@@ -1,6 +1,7 @@
 import type { Spawning } from './spawn.js';
 import type { Direction } from 'xxscreeps/game/position.js';
 import * as Id from 'xxscreeps/engine/schema/id.js';
+import { powerEffectsFormat } from 'xxscreeps/game/effects.js';
 import { makeSingleStoreFormat } from 'xxscreeps/mods/classic/resource/schema.js';
 import { ownedStructureShape } from 'xxscreeps/mods/classic/structure/schema.js';
 import { composeBind, declare, optional, struct, variant, vector, withType } from 'xxscreeps/schema/index.js';
@@ -86,4 +87,9 @@ export const spawnShape = declare('Spawn', struct(ownedStructureShape, {
 	 * @see https://docs.screeps.com/api/#StructureSpawn.store
 	 */
 	store: makeSingleStoreFormat(),
+
+	// Applied power effects (harness patch: only PWR_OPERATE_SPAWN writes here today). Spawns are
+	// instantiated from shard.json/create()/placeSpawn, so extending the shape does not invalidate
+	// any pre-serialized blob.
+	'#effects': powerEffectsFormat,
 }));

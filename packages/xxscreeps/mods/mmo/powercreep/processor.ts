@@ -3,6 +3,7 @@ import type { RoomObject } from 'xxscreeps/game/object.js';
 import type { Direction } from 'xxscreeps/game/position.js';
 import { registerIntentProcessor, registerObjectPreTickProcessor, registerObjectTickProcessor } from 'xxscreeps/engine/processor/index.js';
 import * as Movement from 'xxscreeps/engine/processor/movement.js';
+import { applyPowerEffect } from 'xxscreeps/game/effects.js';
 import { Game } from 'xxscreeps/game/index.js';
 import { createRoomObject, saveAction } from 'xxscreeps/game/object.js';
 import { appendEventLog } from 'xxscreeps/game/room/event-log.js';
@@ -14,6 +15,7 @@ import { borderExitPosition, commitMove, flushActionLog, kRetainActionsTime, pro
 import { Tombstone } from 'xxscreeps/mods/classic/creep/tombstone.js';
 import { drop as dropResource } from 'xxscreeps/mods/classic/resource/processor/resource.js';
 import { OpenStore } from 'xxscreeps/mods/classic/resource/store.js';
+import { StructureSpawn, registerSpawnTimeEffect } from 'xxscreeps/mods/classic/spawn/spawn.js';
 import { checkIsActive, checkMyStructure } from 'xxscreeps/mods/classic/structure/structure.js';
 import { StructurePowerBank } from 'xxscreeps/mods/modern/powerbank/powerbank.js';
 import { StructurePowerSpawn } from 'xxscreeps/mods/modern/powerspawn/powerspawn.js';
@@ -39,6 +41,17 @@ function buryPowerCreep(creep: PowerCreep) {
 	};
 	tombstone['#decayTime'] = Game.time + C.TOMBSTONE_DECAY_POWER_CREEP;
 	creep.room['#insertObject'](tombstone);
+}
+
+// `classic/spawn` owns the only spawn-duration computation but cannot see this mod's power table, so
+// hand it the per-rank multipliers PWR_OPERATE_SPAWN applies. Both mods provide the 'processor' slot,
+// so this registration is in place before any spawn intent is processed.
+registerSpawnTimeEffect(C.PWR_OPERATE_SPAWN, powerInfoTable[C.PWR_OPERATE_SPAWN]!.effect!);
+
+// The duration a power's effect lasts at `level`, flat or per-rank.
+function powerDuration(info: { duration?: number | number[] }, level: number) {
+	const { duration } = info;
+	return (Array.isArray(duration) ? duration[level - 1] : duration) ?? 0;
 }
 
 // The roster lives in account keyspace, so the death writeback rides `context.task`.
@@ -137,21 +150,26 @@ const intents = [
 				}
 				break;
 			}
+			case C.PWR_OPERATE_SPAWN: {
+				// The effect rides the spawn; `classic/spawn`'s needTime computation reads it when
+				// the next spawn intent runs (see `spawnTimeMultiplier`). `checkUsePower` validates
+				// ops/cooldown/range but not target type, so the type check belongs here.
+				if (!(target instanceof StructureSpawn)) {
+					return;
+				}
+				applyPowerEffect(
+					target['#effects'], power, entry.level,
+					Game.time + powerDuration(info, entry.level));
+				break;
+			}
 			case C.PWR_REGEN_SOURCE: {
 				// Harness patch: register the effect on the source (real API shape — level/duration
 				// from POWER_INFO). The periodic +energy pulse is NOT implemented yet; player code
 				// observing `source.effects` sees the application, which is what matters first.
 				const source = target as Source;
-				const effects = (source['#effects'] ??= []);
-				const duration = Array.isArray(info.duration) ? info.duration[entry.level - 1]! : info.duration!;
-				const endTime = Game.time + duration;
-				const existing = effects.find(effect => effect.power === C.PWR_REGEN_SOURCE);
-				if (existing) {
-					existing.level = entry.level;
-					existing.endTime = endTime;
-				} else {
-					effects.push({ power: C.PWR_REGEN_SOURCE, level: entry.level, endTime });
-				}
+				applyPowerEffect(
+					source['#effects'], power, entry.level,
+					Game.time + powerDuration(info, entry.level));
 				break;
 			}
 			default:

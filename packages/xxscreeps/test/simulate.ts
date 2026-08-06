@@ -49,7 +49,7 @@ interface SimulationGlobals {
 	// in this interface.
 }
 
-interface Simulation {
+export interface Simulation {
 	db: Database;
 	shard: Shard;
 	world: World;

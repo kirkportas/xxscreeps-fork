@@ -1,11 +1,14 @@
 import type { Database } from 'xxscreeps/engine/db/index.js';
 import type { GameConstructor } from 'xxscreeps/game/index.js';
+import type { Simulation } from 'xxscreeps/test/index.js';
 import * as User from 'xxscreeps/engine/db/user/index.js';
 import * as Id from 'xxscreeps/engine/schema/id.js';
 import { RoomPosition, getPositionInDirection } from 'xxscreeps/game/position.js';
 import { create as createConstructionSite } from 'xxscreeps/mods/classic/construction/construction-site.js';
 import { create as createCreep } from 'xxscreeps/mods/classic/creep/creep.js';
 import { create as createRoad } from 'xxscreeps/mods/classic/road/road.js';
+import { create as createExtension } from 'xxscreeps/mods/classic/spawn/extension.js';
+import { create as createSpawn } from 'xxscreeps/mods/classic/spawn/spawn.js';
 import { lookForStructureAt, lookForStructures } from 'xxscreeps/mods/classic/structure/structure.js';
 import { create as createNuke } from 'xxscreeps/mods/modern/nuker/nuke.js';
 import { create as createPowerSpawn } from 'xxscreeps/mods/modern/powerspawn/powerspawn.js';
@@ -509,9 +512,11 @@ describe('mods/mmo/powercreep', () => {
 
 	// Powers tests
 
-	// Roster prep: create Alice, learn the requested powers, and return her roster id.
-	const createAliceWith = async (db: Database, powers: Record<string, number>) => {
-		await setPower(db, 16000);
+	// Roster prep: create Alice, learn the requested powers, and return her roster id. `power` is the
+	// account's total GPL power; the default covers a handful of low ranks, and a high-rank creep
+	// needs enough free levels to pay for every point it allocates.
+	const createAliceWith = async (db: Database, powers: Record<string, number>, power = 16000) => {
+		await setPower(db, power);
 		await Model.create(db, owner, 'Alice', C.POWER_CLASS.OPERATOR);
 		const [ created ] = await Model.loadRoster(db, owner);
 		if (Object.keys(powers).length > 0) {
@@ -608,6 +613,129 @@ describe('mods/mmo/powercreep', () => {
 			assert.strictEqual(alice.usePower(C.PWR_OPERATE_SPAWN), C.ERR_INVALID_TARGET);
 			assert.strictEqual(alice.usePower(C.PWR_OPERATE_SPAWN, controller), C.ERR_NOT_IN_RANGE);
 			assert.strictEqual(alice.enableRoom(controller), C.ERR_NOT_IN_RANGE);
+		});
+	}));
+
+	// A regular spawn one tile off the power spawn Alice lands on — inside OPERATE_SPAWN's range 3 —
+	// plus the 2500 energy a 50-part body costs, which is more than a spawn alone can hold.
+	const operateSpawnSim = simulate({
+		W1N1: room => {
+			room['#insertObject'](createPowerSpawn(spawnPos, owner));
+			room['#insertObject'](createSpawn(new RoomPosition(26, 25, 'W1N1'), owner, 'Spawn1'));
+			for (let ii = 0; ii < 12; ++ii) {
+				const extension = createExtension(new RoomPosition(20 + ii, 28, 'W1N1'), 8, owner);
+				extension.store['#add'](C.RESOURCE_ENERGY, extension.store.getCapacity(C.RESOURCE_ENERGY));
+				room['#insertObject'](extension);
+			}
+			room['#level'] = 8;
+			room['#user'] = room.controller!['#user'] = owner;
+			room.controller!.isPowerEnabled = true;
+		},
+	});
+
+	// Rank 5 of any power requires creep level 22 to already be allocated when the point is spent, so
+	// the operator has to carry 20 levels across other powers first — the real game's prerequisite,
+	// not a test contrivance. 5 + 4*5 = 25 = POWER_CREEP_MAX_LEVEL.
+	const rank5OperateSpawn = {
+		[C.PWR_OPERATE_SPAWN]: 5,
+		[C.PWR_GENERATE_OPS]: 4,
+		[C.PWR_OPERATE_TOWER]: 4,
+		[C.PWR_OPERATE_STORAGE]: 4,
+		[C.PWR_OPERATE_LAB]: 4,
+		[C.PWR_OPERATE_EXTENSION]: 4,
+	};
+	// GPL 31 (floor(sqrt(1e6 / 1000))) — one level pays for the creep, 25 pay for its powers.
+	const rank5Power = 1000000;
+	const body50 = Array.from({ length: 50 }, () => C.MOVE);
+
+	// Alice lands on the power spawn with 100 ops in the bank, ready to operate Spawn1.
+	const armAlice = async (
+		{ player, poke, tick, shard }: Pick<Simulation, 'player' | 'poke' | 'tick' | 'shard'>,
+		powers: Record<string, number>, power?: number,
+	) => {
+		const id = await createAliceWith(shard.db, powers, power);
+		await player(owner, Game => spawnAlice(Game, id));
+		await tick();
+		await poke('W1N1', owner, (Game, room) => {
+			room['#lookFor'](C.LOOK_POWER_CREEPS)[0]!.store['#add'](C.RESOURCE_OPS, 100);
+		});
+	};
+
+	test('an unoperated spawn takes the full body-length spawn time', () => operateSpawnSim(async refs => {
+		const { player, tick } = refs;
+		await armAlice(refs, rank5OperateSpawn, rank5Power);
+		await player(owner, Game => {
+			assert.deepStrictEqual(Game.spawns.Spawn1?.effects, []);
+			assert.strictEqual(Game.spawns.Spawn1.spawnCreep(body50, 'slow'), C.OK);
+		});
+		await tick();
+		await player(owner, Game => {
+			assert.strictEqual(Game.spawns.Spawn1?.spawning?.needTime, 50 * C.CREEP_SPAWN_TIME);
+		});
+	}));
+
+	test('OPERATE_SPAWN applies to the spawn and scales its spawn time by the rank multiplier',
+		() => operateSpawnSim(async refs => {
+			const { player, tick } = refs;
+			await armAlice(refs, rank5OperateSpawn, rank5Power);
+			await player(owner, Game => {
+				assert.strictEqual(
+					Game.powerCreeps.Alice?.usePower(C.PWR_OPERATE_SPAWN, Game.spawns.Spawn1), C.OK);
+			});
+			await tick();
+			await player(owner, Game => {
+				const spawn = Game.spawns.Spawn1!;
+				// The full POWER_INFO duration is still ahead: the effect was stamped against the
+				// tick the intent ran, which is the tick this read observes.
+				assert.deepStrictEqual(spawn.effects, [ {
+					effect: C.PWR_OPERATE_SPAWN,
+					power: C.PWR_OPERATE_SPAWN,
+					level: 5,
+					ticksRemaining: 1000,
+				} ]);
+				assert.strictEqual(spawn.spawnCreep(body50, 'fast'), C.OK);
+			});
+			await tick();
+			let remaining = 0;
+			await player(owner, Game => {
+				// ceil(50 * CREEP_SPAWN_TIME * 0.2) = 30, against 150 unoperated.
+				assert.strictEqual(Game.spawns.Spawn1?.spawning?.needTime, 30);
+				remaining = Game.spawns.Spawn1.spawning.remainingTime;
+			});
+			// The timer is not just reported short, it runs short: still spawning one tick out...
+			await tick(remaining - 1);
+			await player(owner, Game => {
+				assert.ok(Game.creeps.fast);
+				assert.strictEqual(Game.creeps.fast.ticksToLive, undefined);
+			});
+			// ...and born on the next, ~120 ticks before an unoperated spawn would have finished.
+			await tick(1);
+			await player(owner, Game => {
+				assert.strictEqual(Game.spawns.Spawn1?.spawning, null);
+				assert.strictEqual(Game.creeps.fast?.ticksToLive, C.CREEP_LIFE_TIME - 1);
+			});
+		}));
+
+	test('an expired OPERATE_SPAWN stops accelerating', () => operateSpawnSim(async refs => {
+		const { player, poke, tick } = refs;
+		await armAlice(refs, rank5OperateSpawn, rank5Power);
+		await player(owner, Game => {
+			assert.strictEqual(
+				Game.powerCreeps.Alice?.usePower(C.PWR_OPERATE_SPAWN, Game.spawns.Spawn1), C.OK);
+		});
+		await tick();
+		// Expiry is lazy — nothing sweeps the record, so retiring the timer is the whole mechanism.
+		// Winding it back beats ticking out all 1000 ticks of the real duration.
+		await poke('W1N1', owner, (Game, room) => {
+			lookForStructures(room, C.STRUCTURE_SPAWN)[0]!['#effects'][0]!.endTime = 0;
+		});
+		await player(owner, Game => {
+			assert.deepStrictEqual(Game.spawns.Spawn1?.effects, []);
+			assert.strictEqual(Game.spawns.Spawn1.spawnCreep(body50, 'slow'), C.OK);
+		});
+		await tick();
+		await player(owner, Game => {
+			assert.strictEqual(Game.spawns.Spawn1?.spawning?.needTime, 50 * C.CREEP_SPAWN_TIME);
 		});
 	}));
 

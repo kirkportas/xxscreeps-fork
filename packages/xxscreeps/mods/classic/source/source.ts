@@ -1,3 +1,4 @@
+import { readPowerEffects } from 'xxscreeps/game/effects.js';
 import { Game } from 'xxscreeps/game/index.js';
 import { RoomObject, optionalExpiryTime } from 'xxscreeps/game/object.js';
 import { withOverlay } from 'xxscreeps/schema/index.js';
@@ -25,11 +26,7 @@ export class Source extends withOverlay(RoomObject, sourceShape) {
 	 * @see https://docs.screeps.com/api/#RoomObject.effects
 	 */
 	@enumerable override get effects() {
-		const effects = this['#effects'];
-		if (!effects?.length) return [];
-		return effects.filter(e => e.endTime > Game.time).map(e => ({
-			effect: e.power, power: e.power, level: e.level, ticksRemaining: e.endTime - Game.time,
-		}));
+		return readPowerEffects(this['#effects'], Game.time);
 	}
 
 	get '#lookType'() { return C.LOOK_SOURCES; }

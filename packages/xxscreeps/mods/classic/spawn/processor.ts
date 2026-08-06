@@ -18,7 +18,7 @@ import { OwnedStructure, checkMyStructure, lookForStructures } from 'xxscreeps/m
 import { assign } from 'xxscreeps/utility/utility.js';
 import * as C from 'xxscreeps:mods/constants';
 import { StructureExtension } from './extension.js';
-import { Spawning, StructureSpawn, calculateRenewAmount, calculateRenewCost, checkDirections, checkRecycleCreep, checkRenewCreep, checkSpawnCreep, create } from './spawn.js';
+import { Spawning, StructureSpawn, calculateRenewAmount, calculateRenewCost, checkDirections, checkRecycleCreep, checkRenewCreep, checkSpawnCreep, create, spawnTimeMultiplier } from './spawn.js';
 
 type EnergyStructure = StructureExtension | StructureSpawn;
 function getEnergyStructures(spawn: StructureSpawn, ids?: string[]) {
@@ -180,8 +180,11 @@ const intents = [
 		creep['#ageTime'] = 0;
 		spawn.room['#insertObject'](creep);
 
-		// Set spawning information
-		const needTime = body.length * C.CREEP_SPAWN_TIME;
+		// Set spawning information. An active PWR_OPERATE_SPAWN effect scales the duration here and
+		// only here — `needTime` is the single spawn-duration computation, and baking the multiplier
+		// in at intent time matches the real game (the creep keeps the accelerated timer even if the
+		// effect lapses mid-spawn).
+		const needTime = Math.ceil(body.length * C.CREEP_SPAWN_TIME * spawnTimeMultiplier(spawn));
 		const spawning = spawn.spawning = assign(new StructureSpawn.Spawning(), {
 			directions: directions ?? undefined,
 			needTime,

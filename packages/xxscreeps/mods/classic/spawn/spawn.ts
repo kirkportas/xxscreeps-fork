@@ -4,6 +4,7 @@ import type { Direction, RoomPosition } from 'xxscreeps/game/position.js';
 import type { PartType } from 'xxscreeps/mods/classic/creep/creep.js';
 import { Fn } from 'xxscreeps/functional/fn.js';
 import { chainIntentChecks, checkRange, checkString, checkTarget } from 'xxscreeps/game/checks.js';
+import { readPowerEffects } from 'xxscreeps/game/effects.js';
 import { Game, intents, userGame } from 'xxscreeps/game/index.js';
 import { createRoomObject, requiredExpiryTime } from 'xxscreeps/game/object.js';
 import { registerBuildableStructure } from 'xxscreeps/mods/classic/construction/game.js';
@@ -90,6 +91,15 @@ bindSpawningFormat(Spawning);
  */
 export class StructureSpawn extends withOverlay(OwnedStructure, spawnShape) {
 	static readonly Spawning = Spawning;
+
+	/**
+	 * Applied effects (harness patch — real API shape, populated only by PWR_OPERATE_SPAWN today).
+	 * @public
+	 * @see https://docs.screeps.com/api/#RoomObject.effects
+	 */
+	@enumerable override get effects() {
+		return readPowerEffects(this['#effects'], Game.time);
+	}
 
 	/**
 	 * An alias for `.store[RESOURCE_ENERGY]`.
@@ -309,6 +319,34 @@ export class StructureSpawn extends withOverlay(OwnedStructure, spawnShape) {
 				return C.OK;
 			});
 	}
+}
+
+// Powers that scale spawn time (`PWR_OPERATE_SPAWN` today) are defined by `mmo/powercreep`, which is
+// a DOWNSTREAM TypeScript project — `packages/xxscreeps/tsconfig.json` excludes `mods/mmo` and builds
+// it separately, so `classic` cannot import it or even see its constants, and copying its multiplier
+// table here would silently drift from the original. So the owning mod registers its table at load
+// time, the way mods already register buildable structures and obstacle checkers, and `classic/spawn`
+// stays ignorant of which powers exist: it multiplies whatever effects are live on the spawn.
+const spawnTimeEffects = new Map<number, readonly number[]>();
+
+/** Declare that `power` scales spawn time by `multipliers[level - 1]` while its effect is active. */
+export function registerSpawnTimeEffect(power: number, multipliers: readonly number[]) {
+	spawnTimeEffects.set(power, multipliers);
+}
+
+/**
+ * Multiplier applied to a creep's spawn time by the effects currently on `spawn`; `1` when none
+ * apply. Real-game semantics: it is resolved when the spawn intent runs, so it fixes
+ * `spawning.needTime` for that creep and an effect lapsing mid-spawn does not slow it back down.
+ */
+export function spawnTimeMultiplier(spawn: StructureSpawn) {
+	let multiplier = 1;
+	for (const effect of spawn['#effects']) {
+		if (effect.endTime > Game.time) {
+			multiplier *= spawnTimeEffects.get(effect.power)?.[effect.level - 1] ?? 1;
+		}
+	}
+	return multiplier;
 }
 
 export function create(pos: RoomPosition, owner: string, name: string) {
