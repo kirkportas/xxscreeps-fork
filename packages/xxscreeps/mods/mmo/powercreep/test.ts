@@ -2,6 +2,7 @@ import type { Database } from 'xxscreeps/engine/db/index.js';
 import type { GameConstructor } from 'xxscreeps/game/index.js';
 import type { Simulation } from 'xxscreeps/test/index.js';
 import * as User from 'xxscreeps/engine/db/user/index.js';
+import { clearDroppedIntents, describeDroppedIntents, droppedIntents } from 'xxscreeps/engine/processor/dropped-intents.js';
 import * as Id from 'xxscreeps/engine/schema/id.js';
 import { RoomPosition, getPositionInDirection } from 'xxscreeps/game/position.js';
 import { create as createConstructionSite } from 'xxscreeps/mods/classic/construction/construction-site.js';
@@ -738,6 +739,41 @@ describe('mods/mmo/powercreep', () => {
 			assert.strictEqual(Game.spawns.Spawn1?.spawning?.needTime, 50 * C.CREEP_SPAWN_TIME);
 		});
 	}));
+
+	test('an unimplemented power lands on the dropped-intent ledger', () => operateSpawnSim(async refs => {
+		const { player, tick } = refs;
+		clearDroppedIntents();
+		// PWR_SHIELD needs neither ops nor a target, so nothing but the missing implementation can
+		// stop it: `usePower` returns OK, the processor accepts the intent, and nothing happens.
+		await armAlice(refs, { [C.PWR_SHIELD]: 1 });
+		await player(owner, Game => {
+			assert.strictEqual(Game.powerCreeps.Alice?.usePower(C.PWR_SHIELD), C.OK);
+		});
+		await tick();
+		assert.deepStrictEqual([ ...droppedIntents ], [ [ 'usePower PWR_SHIELD', 1 ] ]);
+		assert.match(describeDroppedIntents(), /usePower PWR_SHIELD — power is not implemented/);
+		clearDroppedIntents();
+	}));
+
+	test('OPERATE_SPAWN on a non-spawn is recorded rather than silently ignored',
+		() => operateSpawnSim(async refs => {
+			const { player, tick } = refs;
+			clearDroppedIntents();
+			await armAlice(refs, rank5OperateSpawn, rank5Power);
+			await player(owner, Game => {
+				// The power spawn Alice is standing on is a structure in range, but not a spawn.
+				const powerSpawn = lookForStructures(Game.rooms.W1N1, C.STRUCTURE_POWER_SPAWN)[0]!;
+				assert.strictEqual(Game.powerCreeps.Alice?.usePower(C.PWR_OPERATE_SPAWN, powerSpawn), C.OK);
+			});
+			await tick();
+			assert.deepStrictEqual([ ...droppedIntents ], [ [ 'usePower PWR_OPERATE_SPAWN', 1 ] ]);
+			await player(owner, Game => {
+				assert.deepStrictEqual(Game.spawns.Spawn1?.effects, []);
+				// Nothing was charged for the no-op, matching the pre-existing drop-without-cost rule.
+				assert.strictEqual(Game.powerCreeps.Alice?.store[C.RESOURCE_OPS], 100);
+			});
+			clearDroppedIntents();
+		}));
 
 	// The power spawn sits on the open tile adjacent to the controller at (42, 22).
 	const enableSim = simulate({

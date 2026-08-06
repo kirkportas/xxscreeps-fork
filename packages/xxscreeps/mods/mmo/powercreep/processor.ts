@@ -1,6 +1,7 @@
 import type { ProcessorContext } from 'xxscreeps/engine/processor/room.js';
 import type { RoomObject } from 'xxscreeps/game/object.js';
 import type { Direction } from 'xxscreeps/game/position.js';
+import { recordDroppedIntent } from 'xxscreeps/engine/processor/dropped-intents.js';
 import { registerIntentProcessor, registerObjectPreTickProcessor, registerObjectTickProcessor } from 'xxscreeps/engine/processor/index.js';
 import * as Movement from 'xxscreeps/engine/processor/movement.js';
 import { applyPowerEffect } from 'xxscreeps/game/effects.js';
@@ -20,6 +21,7 @@ import { checkIsActive, checkMyStructure } from 'xxscreeps/mods/classic/structur
 import { StructurePowerBank } from 'xxscreeps/mods/modern/powerbank/powerbank.js';
 import { StructurePowerSpawn } from 'xxscreeps/mods/modern/powerspawn/powerspawn.js';
 import * as C from 'xxscreeps:mods/constants';
+import * as Constants from './constants.js';
 import * as Model from './model.js';
 import { PowerCreep, checkEnableRoom, checkRenew, checkUsePower, createSpawnedPowerCreep, powerInfoTable, powerOpsCost } from './powercreep.js';
 
@@ -47,6 +49,17 @@ function buryPowerCreep(creep: PowerCreep) {
 // hand it the per-rank multipliers PWR_OPERATE_SPAWN applies. Both mods provide the 'processor' slot,
 // so this registration is in place before any spawn intent is processed.
 registerSpawnTimeEffect(C.PWR_OPERATE_SPAWN, powerInfoTable[C.PWR_OPERATE_SPAWN]!.effect!);
+
+// Diagnostics only: power id -> `PWR_*` name, built lazily off the mod's own constants so the map
+// cannot drift from the table it describes.
+let powerNames: Map<number, string> | undefined;
+function powerName(power: number) {
+	powerNames ??= new Map(Object.entries(Constants)
+		.filter((entry): entry is [ string, number ] =>
+			entry[0].startsWith('PWR_') && typeof entry[1] === 'number')
+		.map(([ name, value ]): [ number, string ] => [ value, name ]));
+	return powerNames.get(power) ?? `power ${power}`;
+}
 
 // The duration a power's effect lasts at `level`, flat or per-rank.
 function powerDuration(info: { duration?: number | number[] }, level: number) {
@@ -155,6 +168,8 @@ const intents = [
 				// the next spawn intent runs (see `spawnTimeMultiplier`). `checkUsePower` validates
 				// ops/cooldown/range but not target type, so the type check belongs here.
 				if (!(target instanceof StructureSpawn)) {
+					recordDroppedIntent(`usePower ${powerName(power)}`,
+						'target was not a spawn — checkUsePower validates range but not target type');
 					return;
 				}
 				applyPowerEffect(
@@ -173,7 +188,10 @@ const intents = [
 				break;
 			}
 			default:
-				// Powers land one at a time; an unimplemented power's intent drops without cost.
+				// Powers land one at a time; an unimplemented power's intent drops without cost. It
+				// is ACCEPTED, though — nothing surfaces to the player or to a test driver — so the
+				// no-op goes on the dropped-intent ledger rather than vanishing.
+				recordDroppedIntent(`usePower ${powerName(power)}`, 'power is not implemented by this engine');
 				return;
 		}
 		creep.store['#subtract'](C.RESOURCE_OPS, powerOpsCost(info, entry.level));
