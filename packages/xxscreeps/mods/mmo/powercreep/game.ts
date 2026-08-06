@@ -15,17 +15,10 @@ declare module 'xxscreeps/engine/runner/index.js' {
 let roster: PowerCreep[] = [];
 
 // Materialize the roster blob the driver sends: once on boot, then again whenever a mutation lands.
+// The per-tick half deliberately does NOT live in `receive` — see the gameInitializer below.
 hooks.register('runtimeConnector', {
 	initialize(payload) {
 		if (payload.powerCreepsBlob) {
-			roster = read(payload.powerCreepsBlob);
-		}
-	},
-
-	receive(payload) {
-		if (payload.powerCreepsBlob === null) {
-			roster = [];
-		} else if (payload.powerCreepsBlob) {
 			roster = read(payload.powerCreepsBlob);
 		}
 	},
@@ -54,6 +47,14 @@ declare module 'xxscreeps/game/game.js' {
 	}
 }
 hooks.register('gameInitializer', (Game, payload) => {
+	// Read this tick's roster blob HERE, not in the connector's `receive`: `runWithGame`
+	// (game/index.ts) constructs the Game object — running these initializers — and only then runs
+	// the task that fires `receive`. A roster materialized in `receive` therefore reaches `Game` one
+	// tick late, and player code that acts on roster state re-issues its whole create/upgrade
+	// sequence on the following tick. `gplPower` below is read off the payload for the same reason.
+	if (payload && 'powerCreepsBlob' in payload) {
+		roster = payload.powerCreepsBlob == null ? [] : read(payload.powerCreepsBlob);
+	}
 	Game.powerCreeps = Object.create(null) as Record<string, PowerCreep>;
 	for (const creep of roster) {
 		Game.powerCreeps[creep.name] = creep;
