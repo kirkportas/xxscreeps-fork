@@ -44,12 +44,12 @@ class IsolatedCPU implements CPU {
 		this.bucket = data.cpu.bucket;
 		this.limit = data.cpu.limit;
 		this.tickLimit = data.cpu.tickLimit;
-		this.#startTime = isolate.wallTime;
+		this.#startTime = isolate.cpuTime;
 	}
 
 	getHeapStatistics = () => isolate.getHeapStatisticsSync();
 
-	getUsed = () => Number(isolate.wallTime - this.#startTime) / 1e6;
+	getUsed = () => Number(isolate.cpuTime - this.#startTime) / 1e6;
 
 	halt = () => {
 		isolate.dispose();
