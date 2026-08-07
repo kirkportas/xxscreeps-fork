@@ -15,6 +15,41 @@ declare module 'xxscreeps/engine/runner/index.js' {
 	}
 }
 
+/**
+ * `Game.cpu.getUsed()` must report the script's own PROCESSOR time, not elapsed wall time.
+ * The MMO server bills a per-isolate CPU clock, and bots self-regulate against it (bucket
+ * staircases, per-subsystem budgets, throttle latches). A wall clock makes that reading depend on
+ * whatever else the host is doing: run several sandboxes (or an unrelated build) at once and every
+ * bot sees its own cost inflate, throttles, and behaves differently — which is both unfaithful and
+ * non-reproducible for tests.
+ *
+ * The player's loop runs synchronously on this thread inside `node:vm`, so the thread's
+ * (user + system) CPU time across the tick window IS the script's cost. `process.threadCpuUsage()`
+ * (node >= 22.15) measures exactly that thread and is the closest analogue to isolated-vm's
+ * `isolate.cpuTime`; `process.cpuUsage()` is the process-wide fallback, which additionally bills
+ * V8 helper threads (concurrent GC) and anything the libuv thread pool happens to run during the
+ * window. Wall clock remains available for comparison.
+ *
+ * Override with `XX_CPU_CLOCK=thread|process|wall`.
+ */
+const readCpuMicros = function(): () => number {
+	const requested = process.env.XX_CPU_CLOCK;
+	const hasThreadClock = typeof process.threadCpuUsage === 'function';
+	const clock = requested === 'wall' || requested === 'process' ? requested :
+		hasThreadClock ? 'thread' : 'process';
+	switch (clock) {
+		case 'wall': return () => Number(process.hrtime.bigint()) / 1e3;
+		case 'process': return () => {
+			const usage = process.cpuUsage();
+			return usage.user + usage.system;
+		};
+		default: return () => {
+			const usage = process.threadCpuUsage();
+			return usage.user + usage.system;
+		};
+	}
+}();
+
 class NodejsCPU implements CPU {
 	bucket;
 	limit;
@@ -25,12 +60,12 @@ class NodejsCPU implements CPU {
 		this.bucket = data.cpu.bucket;
 		this.limit = data.cpu.limit;
 		this.tickLimit = data.cpu.tickLimit;
-		this.#startTime = process.hrtime.bigint();
+		this.#startTime = readCpuMicros();
 	}
 
 	getHeapStatistics = () => ({} as never);
 
-	getUsed = () => Number(process.hrtime.bigint() - this.#startTime) / 1e6;
+	getUsed = () => (readCpuMicros() - this.#startTime) / 1e3;
 
 	halt = (): never => {
 		throw new Error(kPleaseHalt);
