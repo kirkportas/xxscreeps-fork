@@ -3,6 +3,7 @@ import { Fn } from 'xxscreeps/functional/fn.js';
 import { RoomPosition } from 'xxscreeps/game/position.js';
 import { Creep, create as createCreep } from 'xxscreeps/mods/classic/creep/creep.js';
 import { Structure, lookForStructures } from 'xxscreeps/mods/classic/structure/structure.js';
+import * as Memory from 'xxscreeps/mods/meta/memory/memory.js';
 import { assert, describe, simulate, test } from 'xxscreeps/test/index.js';
 import * as C from 'xxscreeps:mods/constants';
 import { create as createExtension } from './extension.js';
@@ -40,6 +41,24 @@ describe('mods/classic/spawn', () => {
 			await tick(1);
 			await player('100', Game => {
 				assert.strictEqual(Game.creeps.creep?.ticksToLive, 1499);
+			});
+		}));
+
+		test('no memory option leaves Memory.creeps untouched', () => simulation(async ({ player }) => {
+			await player('100', Game => {
+				assert.strictEqual(Game.spawns.Spawn1?.spawnCreep([ C.MOVE ], 'noMemory'), C.OK);
+				// An own key holding `undefined` is not the same as no key: `for (const name in
+				// Memory.creeps)` would still yield it, and reading a field off it throws.
+				assert.strictEqual(Object.hasOwn(Memory.get().creeps ?? {}, 'noMemory'), false);
+			});
+		}));
+
+		test('memory option is written to Memory.creeps', () => simulation(async ({ player }) => {
+			await player('100', Game => {
+				assert.strictEqual(Game.spawns.Spawn1?.spawnCreep([ C.MOVE ], 'withMemory', {
+					memory: { role: 'worker' },
+				}), C.OK);
+				assert.deepStrictEqual(Memory.get().creeps?.withMemory, { role: 'worker' });
 			});
 		}));
 

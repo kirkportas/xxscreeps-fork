@@ -295,15 +295,20 @@ export class StructureSpawn extends withOverlay(OwnedStructure, spawnShape) {
 					return C.OK;
 				}
 
-				// Save memory option to Memory
-				const memory = Memory.get();
-				// eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-				if (memory.creeps === undefined) {
-					memory.creeps = {};
-				}
-				// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-				if (memory.creeps != null && typeof memory.creeps === 'object') {
-					memory.creeps[name] = options.memory as never;
+				// Save memory option to Memory. Only when the caller actually passed one: writing
+				// `undefined` still creates the key, and an own `Memory.creeps[name] === undefined`
+				// entry outlives a spawn intent that the processor later rejects, which breaks
+				// players who walk `for (const name in Memory.creeps)` and read a field off it.
+				if (options.memory !== undefined) {
+					const memory = Memory.get();
+					// eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+					if (memory.creeps === undefined) {
+						memory.creeps = {};
+					}
+					// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+					if (memory.creeps != null && typeof memory.creeps === 'object') {
+						memory.creeps[name] = options.memory as never;
+					}
 				}
 
 				// Save intent
