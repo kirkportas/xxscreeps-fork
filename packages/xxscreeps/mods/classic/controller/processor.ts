@@ -150,8 +150,18 @@ const intents = [
 		if (CreepLib.checkReserveController(creep, controller) === C.OK) {
 			const power = creep.getActiveBodyparts(C.CLAIM) * C.CONTROLLER_RESERVE;
 			const reservationEndTime = controller['#reservationEndTime'];
+			// Renewing an existing reservation adds `power` ticks, NOT `power + 1`. The extra tick
+			// made every reserver bank one tick per tick: a one-CLAIM body, which the official
+			// engine leaves exactly break-even against a countdown that falls 1 a tick, instead
+			// banked ~500 ticks over its 600-tick life and kept a room reserved long after it died.
+			// Official engine: `if (!reservation) reservation = {endTime: gameTime + 1};
+			// reservation.endTime += effect;` (screeps engine
+			// src/processor/intents/creeps/reserveController.js:35-49). The Rust reimplementation
+			// agrees (rust_engine src/processor/intents/creeps/reserve_controller.rs:104-118).
+			// The fresh-reservation branch below is unchanged: gameTime + 1 + power is the same
+			// number the official engine produces.
 			const endTime = reservationEndTime
-				? Math.min(Game.time + C.CONTROLLER_RESERVE_MAX, reservationEndTime + power + 1)
+				? Math.min(Game.time + C.CONTROLLER_RESERVE_MAX, reservationEndTime + power)
 				: Game.time + power + 1;
 			reserve(context, controller, creep['#user'], endTime);
 			saveAction(creep, 'reserveController', controller.pos);
