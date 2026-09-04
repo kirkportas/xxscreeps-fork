@@ -208,6 +208,35 @@ describe('mods/classic/controller', () => {
 				assert.strictEqual(Game.creeps.worker!.reserveController(controller), C.ERR_INVALID_TARGET);
 			});
 		}));
+
+		// A reservation well short of CONTROLLER_RESERVE_MAX, so the cap cannot mask the arithmetic
+		// the way it does for `ownReservation` (which starts at 5000, the cap itself).
+		const renewableReservation = simulate({
+			W3N3: room => {
+				room['#user'] = '100';
+				room.controller!['#reservationEndTime'] = 200;
+				room['#insertObject'](create(pos, [ C.CLAIM, C.MOVE ], 'claimer', '100'));
+			},
+		});
+
+		test('renewing a reservation with one CLAIM part leaves the ticks remaining unchanged',
+			() => renewableReservation(async ({ player, tick }) => {
+				let before = 0;
+				await player('100', Game => {
+					before = Game.rooms.W3N3!.controller!['#reservationEndTime'] - Game.time;
+					assert.strictEqual(
+						Game.creeps.claimer?.reserveController(Game.rooms.W3N3!.controller!), C.OK);
+				});
+				await tick();
+				await player('100', Game => {
+					// One CLAIM part adds CONTROLLER_RESERVE (1) tick and the countdown spends 1, so
+					// the reservation stands exactly where it was. The official engine renews with
+					// `reservation.endTime += effect` and nothing else (screeps engine
+					// src/processor/intents/creeps/reserveController.js:35-49).
+					const after = Game.rooms.W3N3!.controller!['#reservationEndTime'] - Game.time;
+					assert.strictEqual(after, before);
+				});
+			}));
 	});
 
 	describe('upgradeController', () => {
