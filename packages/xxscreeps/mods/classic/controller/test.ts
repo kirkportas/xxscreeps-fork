@@ -209,8 +209,7 @@ describe('mods/classic/controller', () => {
 			});
 		}));
 
-		// A reservation well short of CONTROLLER_RESERVE_MAX, so the cap cannot mask the arithmetic
-		// the way it does for `ownReservation` (which starts at 5000, the cap itself).
+		// Short of CONTROLLER_RESERVE_MAX, so the cap does not hide the arithmetic.
 		const renewableReservation = simulate({
 			W3N3: room => {
 				room['#user'] = '100';
@@ -229,10 +228,6 @@ describe('mods/classic/controller', () => {
 				});
 				await tick();
 				await player('100', Game => {
-					// One CLAIM part adds CONTROLLER_RESERVE (1) tick and the countdown spends 1, so
-					// the reservation stands exactly where it was. The official engine renews with
-					// `reservation.endTime += effect` and nothing else (screeps engine
-					// src/processor/intents/creeps/reserveController.js:35-49).
 					const after = Game.rooms.W3N3!.controller!['#reservationEndTime'] - Game.time;
 					assert.strictEqual(after, before);
 				});
