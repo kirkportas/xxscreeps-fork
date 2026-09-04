@@ -6,3 +6,8 @@
 /screeps
 dist
 node_modules
+
+# Determinism digests written into the engine package by our integration harness
+# (tests/integration/xxscreeps) — output, not engine source. Without this the engine
+# working tree reads DIRTY on every run and the pin banner stops meaning anything.
+.determinism
